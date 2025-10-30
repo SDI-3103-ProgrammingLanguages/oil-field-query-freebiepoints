@@ -10,39 +10,56 @@
 -- 1) v1_leases(lease_name, county, state, royalty_rate_pct)
 -- Hint: multiply royalty_rate by 100 and round to one decimal place (e.g., 20.0).
 DROP VIEW IF EXISTS v1_leases;
--- CREATE VIEW v1_leases AS
--- SELECT ... FROM leases;
+CREATE VIEW v1_leases AS
+SELECT lease_name, county, state, ROUND(royalty_rate * 100,1) AS royalty_rate_pct FROM leases;
 
 -- 2) v2_active_wells(lease_name, well_name, api_number, operator_name)
 -- Hint: JOIN wells→leases→operators. Filter WHERE status='ACTIVE'.
 DROP VIEW IF EXISTS v2_active_wells;
--- CREATE VIEW v2_active_wells AS
--- SELECT ... FROM ... JOIN ... WHERE ...;
+CREATE VIEW v2_active_wells AS
+SELECT l.lease_name, w.well_name, w.api_number, o.operator_name
+ FROM wells AS w 
+ JOIN leases AS l ON w.lease_id = l.id
+ JOIN operators AS o ON w.operator_id = o.id
+ WHERE w.status = 'ACTIVE';
 
 -- 3) v3_last_month_oil(well_name, prod_month, oil_bbl)
 -- Hint: Use a CTE or subquery to get MAX(prod_month) from monthly_production.
 DROP VIEW IF EXISTS v3_last_month_oil;
--- CREATE VIEW v3_last_month_oil AS
+ CREATE VIEW v3_last_month_oil AS
 -- WITH maxm AS (SELECT MAX(prod_month) AS m FROM monthly_production)
 -- SELECT ... WHERE m.prod_month=(SELECT m FROM maxm);
-
+-- This is the statement Gemini recommended, where max(prod_month) is found in the WHERE statement
+SELECT
+  t2.well_name,
+  t1.prod_month,
+  t1.oil_bbl
+FROM monthly_production AS t1
+INNER JOIN wells AS t2
+  ON t1.well_id = t2.id
+WHERE
+  t1.prod_month = (
+    SELECT
+      MAX(prod_month)
+    FROM monthly_production
+  );
 -- 4) v4_lease_totals_last_month(lease_name, prod_month, total_oil_bbl)
 -- Hint: leases→wells→monthly_production, GROUP BY lease.
 DROP VIEW IF EXISTS v4_lease_totals_last_month;
--- CREATE VIEW v4_lease_totals_last_month AS
--- WITH maxm AS (...)
--- SELECT l.lease_name, (SELECT m FROM maxm) AS prod_month, SUM(m.oil_bbl) AS total_oil_bbl
--- FROM monthly_production m JOIN wells w ON ... JOIN leases l ON ...
--- WHERE m.prod_month=(SELECT m FROM maxm)
--- GROUP BY l.id, l.lease_name;
+ CREATE VIEW v4_lease_totals_last_month AS
+ WITH maxm AS (SELECT MAX(prod_month) AS m FROM monthly_production)
+ SELECT l.lease_name, (SELECT m FROM maxm) AS prod_month, SUM(m.oil_bbl) AS total_oil_bbl
+ FROM monthly_production m JOIN wells w ON m.well_id = w.id JOIN leases l ON w.lease_id = l.id
+ WHERE m.prod_month=(SELECT m FROM maxm)
+ GROUP BY l.id, l.lease_name;
 
 -- 5) v5_avg_oil_by_well(well_name, avg_oil_bbl)
 -- Hint: AVG over all months; ROUND to 1 decimal.
 DROP VIEW IF EXISTS v5_avg_oil_by_well;
--- CREATE VIEW v5_avg_oil_by_well AS
--- SELECT w.well_name, ROUND(AVG(m.oil_bbl),1) AS avg_oil_bbl
--- FROM monthly_production m JOIN wells w ON ...
--- GROUP BY w.id, w.well_name;
+ CREATE VIEW v5_avg_oil_by_well AS
+ SELECT w.well_name, ROUND(AVG(m.oil_bbl),1) AS avg_oil_bbl
+ FROM monthly_production m JOIN wells w ON m.well_id = w.id
+ GROUP BY w.id, w.well_name;
 
 -- 6) v6_operator_scoreboard_last_month(operator_name, active_well_count, total_oil_bbl)
 -- Hint: One CTE counts ACTIVE wells per operator; another sums last-month oil per operator; JOIN them.
